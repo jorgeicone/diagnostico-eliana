@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#050d1f; --bg-2:#0a1430;
@@ -279,11 +278,11 @@ const CONFIG = {
 };
 
 const DIMENSIONS = [
-  {key:"cargo",       label:"Arquitectura del Cargo",           foco:"documentar el rol, los KPIs y un ritual semanal de foco"},
-  {key:"datos",       label:"Datos & Sell Out",                 foco:"automatizar el consolidado de sell out, cartera y distribución numérica"},
-  {key:"ia",          label:"Productividad & IA",               foco:"pasar tus presentaciones de 1–3 días a minutos con plantillas + IA"},
-  {key:"equipo",      label:"Liderazgo & Foco del Equipo",      foco:"construir el artefacto de foco para tus 3 ejecutivos"},
-  {key:"negociacion", label:"Distribuidores & Negociación",     foco:"un marco de variables de negociación y preparación con datos"}
+  {key:"cargo",       label:"Arquitectura del Cargo",           short:"Cargo",        foco:"documentar el rol, los KPIs y un ritual semanal de foco"},
+  {key:"datos",       label:"Datos & Sell Out",                 short:"Datos",        foco:"automatizar el consolidado de sell out, cartera y distribución numérica"},
+  {key:"ia",          label:"Productividad & IA",               short:"IA",           foco:"pasar tus presentaciones de 1–3 días a minutos con plantillas + IA"},
+  {key:"equipo",      label:"Liderazgo & Foco del Equipo",      short:"Equipo",       foco:"construir el artefacto de foco para tus 3 ejecutivos"},
+  {key:"negociacion", label:"Distribuidores & Negociación",     short:"Negociación",  foco:"un marco de variables de negociación y preparación con datos"}
 ];
 const DIM_LABEL = Object.fromEntries(DIMENSIONS.map(d=>[d.key,d.label]));
 
@@ -544,21 +543,73 @@ function renderDimList(dims){
   setTimeout(()=>document.querySelectorAll(".dim-bar > i").forEach(i=>i.style.width=i.dataset.w+"%"),120);
 }
 function renderResultRadar(dims){
-  new Chart(document.getElementById("dimensionRadar"),{
-    type:"radar",
-    data:{labels:DIMENSIONS.map(d=>d.label),datasets:[{
-      data:DIMENSIONS.map(d=>dims[d.key]),
-      backgroundColor:'rgba(0,212,255,.18)',
-      borderColor:getComputedStyle(document.documentElement).getPropertyValue('--primary'),
-      borderWidth:2,pointBackgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--secondary'),pointRadius:3}]},
-    options:radarOptions(100)
-  });
+  drawRadar(document.getElementById("dimensionRadar"),
+    DIMENSIONS.map(d=>d.short), DIMENSIONS.map(d=>dims[d.key]||0), 100,
+    'rgba(0,212,255,.20)', '#00d4ff');
 }
-function radarOptions(max){
-  return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{r:{min:0,max:max,ticks:{color:'rgba(255,255,255,.3)',backdropColor:'transparent',stepSize:max/4,font:{size:9}},
-      grid:{color:'rgba(255,255,255,.08)'},angleLines:{color:'rgba(255,255,255,.1)'},
-      pointLabels:{color:'rgba(255,255,255,.75)',font:{size:10,weight:'600'}}}}};
+
+/* ===== Custom canvas charts (no external CDN) ===== */
+function roundRect(ctx,x,y,w,h,r){ if(h<r)r=Math.max(0,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function splitLabel(txt){
+  const words=txt.split(' ');
+  if(txt.length<=12 || words.length<2) return [txt];
+  const mid=Math.ceil(words.length/2);
+  return [words.slice(0,mid).join(' '), words.slice(mid).join(' ')];
+}
+
+function drawRadar(canvas, labels, values, max, fill, stroke){
+  if(!canvas) return;
+  const dpr=window.devicePixelRatio||1;
+  const parentW=canvas.parentElement?canvas.parentElement.clientWidth-48:300;
+  const cssW=canvas.clientWidth||parentW||300;
+  const cssH=+(canvas.getAttribute('height'))||260;
+  canvas.width=cssW*dpr; canvas.height=cssH*dpr;
+  canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cssW,cssH);
+  const n=labels.length, cx=cssW/2, cy=cssH/2, R=Math.min(cssW,cssH)/2-56;
+  const ang=i=>-Math.PI/2 + i*2*Math.PI/n;
+  for(let r=1;r<=4;r++){
+    ctx.beginPath();
+    for(let i=0;i<=n;i++){const a=ang(i%n),rr=R*r/4,x=cx+rr*Math.cos(a),y=cy+rr*Math.sin(a); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    ctx.closePath(); ctx.strokeStyle='rgba(255,255,255,.09)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  for(let i=0;i<n;i++){const a=ang(i); ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a)); ctx.strokeStyle='rgba(255,255,255,.10)'; ctx.stroke();}
+  ctx.beginPath();
+  for(let i=0;i<=n;i++){const idx=i%n,a=ang(idx),v=Math.max(0,Math.min(max,values[idx]||0)),rr=R*v/max,x=cx+rr*Math.cos(a),y=cy+rr*Math.sin(a); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+  ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke();
+  for(let i=0;i<n;i++){const a=ang(i),v=Math.max(0,Math.min(max,values[i]||0)),rr=R*v/max,x=cx+rr*Math.cos(a),y=cy+rr*Math.sin(a); ctx.beginPath(); ctx.arc(x,y,3,0,7); ctx.fillStyle=stroke; ctx.fill();}
+  ctx.fillStyle='rgba(255,255,255,.82)'; ctx.font='600 10px Inter,system-ui,sans-serif'; ctx.textBaseline='middle';
+  for(let i=0;i<n;i++){
+    const a=ang(i); let lx=cx+(R+15)*Math.cos(a); const ly=cy+(R+15)*Math.sin(a), cos=Math.cos(a);
+    const align=cos>0.3?'left':cos<-0.3?'right':'center'; ctx.textAlign=align;
+    const lines=splitLabel(labels[i]);
+    const wmax=Math.max(...lines.map(t=>ctx.measureText(t).width));
+    if(align==='right') lx=Math.max(lx, wmax+3);
+    else if(align==='left') lx=Math.min(lx, cssW-wmax-3);
+    else lx=Math.min(Math.max(lx, wmax/2+3), cssW-wmax/2-3);
+    if(lines.length>1){ ctx.fillText(lines[0],lx,ly-6); ctx.fillText(lines[1],lx,ly+6); }
+    else ctx.fillText(lines[0],lx,ly);
+  }
+}
+
+function drawBars(canvas, labels, values, colors){
+  if(!canvas) return;
+  const dpr=window.devicePixelRatio||1;
+  const parentW=canvas.parentElement?canvas.parentElement.clientWidth-48:300;
+  const cssW=canvas.clientWidth||parentW||300;
+  const cssH=+(canvas.getAttribute('height'))||300;
+  canvas.width=cssW*dpr; canvas.height=cssH*dpr;
+  canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cssW,cssH);
+  const n=values.length, max=Math.max(1,...values), padX=20, padT=24, padB=52, h0=cssH-padB, gap=(cssW-2*padX)/n, bw=Math.min(70,gap*0.5);
+  for(let i=0;i<n;i++){
+    const v=values[i], bh=(h0-padT)*(v/max), x=padX+gap*i+(gap-bw)/2, y=h0-bh;
+    ctx.fillStyle=colors[i]; roundRect(ctx,x,y,bw,Math.max(2,bh),8); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='700 13px Inter,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(String(v),x+bw/2,y-4);
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.font='600 10px Inter,system-ui,sans-serif'; ctx.textBaseline='top';
+    labels[i].split(' ').forEach((w,wi)=>ctx.fillText(w,x+bw/2,h0+8+wi*12));
+  }
 }
 
 /* Submit -> GitHub Issues */
@@ -665,21 +716,12 @@ async function loadDashboard(){
       DIMENSIONS.forEach(d=>dimAgg[d.key]+=(dm[d.key]||0)/(responses.length||1));
       const l=r.data.__level; if(l && lvlCount[l]!==undefined) lvlCount[l]++;
     });
-    new Chart(document.getElementById("dashDimensionRadar"),{
-      type:"radar",
-      data:{labels:DIMENSIONS.map(d=>d.label),datasets:[{
-        data:DIMENSIONS.map(d=>Math.round(dimAgg[d.key]||0)),
-        backgroundColor:'rgba(123,47,255,.18)',
-        borderColor:getComputedStyle(document.documentElement).getPropertyValue('--secondary'),
-        borderWidth:2,pointBackgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--primary'),pointRadius:3}]},
-      options:radarOptions(100)});
-    new Chart(document.getElementById("dashLevels"),{
-      type:"bar",
-      data:{labels:Object.keys(lvlCount),datasets:[{data:Object.values(lvlCount),
-        backgroundColor:['rgba(255,255,255,.25)','rgba(255,140,0,.6)','rgba(0,212,255,.6)'],borderRadius:8}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:'rgba(255,255,255,.6)',font:{size:10}},grid:{display:false}},
-          y:{beginAtZero:true,ticks:{color:'rgba(255,255,255,.4)',stepSize:1},grid:{color:'rgba(255,255,255,.06)'}}}}});
+    drawRadar(document.getElementById("dashDimensionRadar"),
+      DIMENSIONS.map(d=>d.short), DIMENSIONS.map(d=>Math.round(dimAgg[d.key]||0)), 100,
+      'rgba(123,47,255,.20)', '#7b2fff');
+    drawBars(document.getElementById("dashLevels"),
+      Object.keys(lvlCount), Object.values(lvlCount),
+      ['rgba(255,255,255,.35)','rgba(255,140,0,.7)','rgba(0,212,255,.7)']);
   }catch(err){ console.error(err); }
 }
 
