@@ -272,10 +272,13 @@
 <script>
 const CONFIG = {
   marca: "ICONE ialabs",
-  adminKey: "eliana2026",
-  githubRepo: "jorgeicone/diagnostico-eliana",
-  fechaGeneracion: "2026-07-26"
+  slug: "diagnostico-eliana",
+  sbUrl: "https://nvgkhdrrxqdgxktfkioa.supabase.co",
+  sbKey: "sb_publishable_d1RrtE7S-9a8e8mGKRRjxQ_4HU_nkDl",
+  sbTable: "icone_evaluaciones",
+  fechaGeneracion: "2026-07-27"
 };
+let ADMIN_PASS = "";
 
 const DIMENSIONS = [
   {key:"cargo",       label:"Arquitectura del Cargo",           short:"Cargo",        foco:"documentar el rol, los KPIs y un ritual semanal de foco"},
@@ -403,13 +406,14 @@ let answers = {};
 const urlParams = new URLSearchParams(window.location.search);
 const isAdmin = urlParams.has("admin");
 const isDashboard = urlParams.has("dashboard");
-if(isAdmin){
-  document.getElementById("modeLabel").textContent = "ADMIN · CONFIDENCIAL";
-  if(sessionStorage.getItem("authed")==="1"){ showScreen("screenAdmin"); loadResponses(); }
-  else { showScreen("screenAuth"); }
-} else if(isDashboard){
-  document.getElementById("modeLabel").textContent = "DASHBOARD";
-  showScreen("screenDashboard"); loadDashboard();
+function enterPanel(){
+  if(isDashboard){ showScreen("screenDashboard"); loadDashboard(); }
+  else { showScreen("screenAdmin"); loadResponses(); }
+}
+if(isAdmin||isDashboard){
+  document.getElementById("modeLabel").textContent = isAdmin ? "ADMIN · CONFIDENCIAL" : "DASHBOARD";
+  ADMIN_PASS = sessionStorage.getItem("apass") || "";
+  if(ADMIN_PASS){ enterPanel(); } else { showScreen("screenAuth"); }
 }
 
 function showScreen(id){
@@ -612,39 +616,71 @@ function drawBars(canvas, labels, values, colors){
   }
 }
 
-/* Submit -> GitHub Issues */
-document.getElementById("btnSubmit").addEventListener("click", ()=>{
-  const title=`Diagnostic: ${answers.__name} (${answers.__email})`;
-  const body="```json\n"+JSON.stringify(answers,null,2)+"\n```";
-  const url=`https://github.com/${CONFIG.githubRepo}/issues/new?labels=diagnostic&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-  document.getElementById("submitHint").innerHTML=`Vas a ser redirigido a GitHub para enviar el resultado.<br><a href="${url}" target="_blank" style="color:var(--primary)">Si no abre, haz click aquí</a>`;
-  window.open(url,"_blank");
+/* Submit -> Supabase (silencioso, sin login para el respondente) */
+document.getElementById("btnSubmit").addEventListener("click", async ()=>{
+  const btn=document.getElementById("btnSubmit"), hint=document.getElementById("submitHint");
+  btn.disabled=true; btn.textContent="Enviando…"; hint.textContent="Guardando tus respuestas…";
+  const payload={
+    entrenamiento:CONFIG.slug,
+    nombre:answers.__name||null,
+    emprendimiento:answers.__company||null,
+    satisfaccion_pct:(typeof answers.__score==="number")?answers.__score:null,
+    meta:answers
+  };
+  try{
+    const r=await fetch(`${CONFIG.sbUrl}/rest/v1/${CONFIG.sbTable}`,{
+      method:"POST",
+      headers:{"apikey":CONFIG.sbKey,"Authorization":"Bearer "+CONFIG.sbKey,"Content-Type":"application/json","Prefer":"return=minimal"},
+      body:JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error("http "+r.status);
+    btn.textContent="✓ Enviado";
+    hint.innerHTML="<b style='color:var(--primary)'>¡Listo, Eliana!</b> Tus respuestas llegaron al equipo de ICONE ialabs. Gracias por tu tiempo.";
+  }catch(e){
+    btn.disabled=false; btn.textContent="Reintentar envío →";
+    hint.textContent="No se pudo enviar (revisa tu conexión). Intenta de nuevo.";
+  }
 });
 
-document.getElementById("btnAuth")?.addEventListener("click", ()=>{
+document.getElementById("btnAuth")?.addEventListener("click", async ()=>{
   const k=document.getElementById("authKey").value.trim();
-  if(k===CONFIG.adminKey){ sessionStorage.setItem("authed","1"); showScreen("screenAdmin"); loadResponses(); }
-  else { alert("Clave incorrecta."); }
+  const btn=document.getElementById("btnAuth"); btn.disabled=true; btn.textContent="Entrando…";
+  try{ await fetchResponses(k); ADMIN_PASS=k; sessionStorage.setItem("apass",k); enterPanel(); }
+  catch(e){ alert("Clave incorrecta."); btn.disabled=false; btn.textContent="Entrar"; }
 });
 
-async function fetchResponses(){
-  const res=await fetch(`https://api.github.com/repos/${CONFIG.githubRepo}/issues?labels=diagnostic&state=all&per_page=100`);
-  const issues=await res.json();
-  return (Array.isArray(issues)?issues:[]).map(issue=>{
-    const m=issue.body && issue.body.match(/```json\n([\s\S]+?)\n```/);
-    if(!m) return null;
-    try{ return {issue,data:JSON.parse(m[1])}; }catch{ return null; }
-  }).filter(Boolean);
+async function fetchResponses(pass){
+  const res=await fetch(`${CONFIG.sbUrl}/rest/v1/rpc/get_evaluaciones_e`,{
+    method:"POST",
+    headers:{"apikey":CONFIG.sbKey,"Authorization":"Bearer "+CONFIG.sbKey,"Content-Type":"application/json"},
+    body:JSON.stringify({pass:pass, ent:CONFIG.slug})
+  });
+  if(!res.ok) throw new Error("unauthorized");
+  const rows=await res.json();
+  if(!Array.isArray(rows)) throw new Error("unauthorized");
+  return rows.map(row=>({ id:row.id, created_at:row.created_at, data:row.meta||{} }));
+}
+
+async function deleteResponse(id){
+  if(!confirm("¿Borrar esta respuesta?")) return;
+  try{
+    await fetch(`${CONFIG.sbUrl}/rest/v1/rpc/delete_evaluacion_e`,{
+      method:"POST",
+      headers:{"apikey":CONFIG.sbKey,"Authorization":"Bearer "+CONFIG.sbKey,"Content-Type":"application/json"},
+      body:JSON.stringify({pass:ADMIN_PASS, rid:id})
+    });
+    loadResponses();
+  }catch(e){ alert("No se pudo borrar."); }
 }
 
 async function loadResponses(){
   const list=document.getElementById("responsesList");
   list.innerHTML=`<div style="text-align:center;color:var(--text-3);padding:30px">Cargando…</div>`;
   try{
-    const responses=await fetchResponses();
+    const responses=await fetchResponses(ADMIN_PASS);
     window.__responses=responses;
     renderResponses(responses); renderAdminStats(responses,"adminStats");
-  }catch(err){ list.innerHTML=`<div style="text-align:center;color:var(--accent);padding:30px">Error al cargar: ${err.message}</div>`; }
+  }catch(err){ list.innerHTML=`<div style="text-align:center;color:var(--accent);padding:30px">No se pudo cargar (clave inválida o sin conexión).</div>`; }
 }
 
 function levelPill(name){
@@ -655,7 +691,7 @@ function levelPill(name){
 function renderAdminStats(responses,elId){
   const total=responses.length;
   const avg=total?Math.round(responses.reduce((s,r)=>s+(r.data.__score||0),0)/total):0;
-  const last=responses[0]?new Date(responses[0].issue.created_at).toLocaleDateString():"—";
+  const last=responses[0]?new Date(responses[0].created_at).toLocaleDateString():"—";
   const lvlCount={};
   responses.forEach(r=>{const l=r.data.__level||"—";lvlCount[l]=(lvlCount[l]||0)+1;});
   const topLvl=Object.entries(lvlCount).sort((a,b)=>b[1]-a[1])[0];
@@ -671,8 +707,8 @@ function renderResponses(responses){
   if(responses.length===0){ list.innerHTML=`<div style="text-align:center;color:var(--text-3);padding:30px">Aún no hay respuestas.</div>`; return; }
   let html=`<div class="response-row header"><div class="col-label">Fecha</div><div class="col-label">Nombre</div><div class="col-label">Email</div><div class="col-label">Puntaje</div><div class="col-label">Nivel</div><div></div></div>`;
   responses.forEach((r,idx)=>{
-    const d=r.data; const date=new Date(r.issue.created_at).toLocaleDateString();
-    html+=`<div class="response-row"><div>${date}</div><div>${d.__name||"—"}</div><div>${d.__email||"—"}</div><div><b>${d.__score??"—"}</b>/100</div><div>${levelPill(d.__level)}</div><button class="view-detail-btn" onclick='showDetail(${idx})'>Ver →</button></div>`;
+    const d=r.data; const date=new Date(r.created_at).toLocaleDateString();
+    html+=`<div class="response-row"><div>${date}</div><div>${d.__name||"—"}</div><div>${d.__email||"—"}</div><div><b>${d.__score??"—"}</b>/100</div><div>${levelPill(d.__level)}</div><div style="display:flex;gap:6px;justify-content:flex-end"><button class="view-detail-btn" onclick='showDetail(${idx})'>Ver</button><button class="view-detail-btn" style="color:#ff6b6b;border-color:rgba(255,107,107,.5)" onclick='deleteResponse("${r.id}")'>✕</button></div>`;
   });
   list.innerHTML=html;
 }
@@ -681,7 +717,7 @@ function showDetail(idx){
   const r=window.__responses[idx]; const d=r.data;
   document.getElementById("modalTitle").textContent=`${d.__name} — Detalle`;
   const dims=d.__dimensions||{};
-  let html=`<div style="margin-bottom:20px;font-size:13px;color:var(--text-2)">📧 ${d.__email} &nbsp;·&nbsp; 🏢 ${d.__company||"—"}<br>📅 ${new Date(r.issue.created_at).toLocaleString()}<br>🎯 <b>${d.__score??"—"}/100</b> · ${d.__level||"—"}</div>`;
+  let html=`<div style="margin-bottom:20px;font-size:13px;color:var(--text-2)">📧 ${d.__email||"—"} &nbsp;·&nbsp; 🏢 ${d.__company||"—"}<br>📅 ${new Date(r.created_at).toLocaleString()}<br>🎯 <b>${d.__score??"—"}/100</b> · ${d.__level||"—"}</div>`;
   html+=`<div style="margin-bottom:20px">`+DIMENSIONS.map(dm=>`<div class="dim-row"><span>${dm.label}</span><div class="dim-bar"><i style="width:${dims[dm.key]||0}%"></i></div><b>${dims[dm.key]||0}</b></div>`).join("")+`</div>`;
   QUESTIONS.forEach(q=>{
     const ans=d[q.id];
@@ -698,7 +734,7 @@ function exportCSV(){
   const rows=[["fecha","nombre","email","empresa","puntaje","nivel",...DIMENSIONS.map(d=>d.label)]];
   (window.__responses||[]).forEach(r=>{
     const d=r.data; const dims=d.__dimensions||{};
-    rows.push([new Date(r.issue.created_at).toLocaleDateString(),d.__name||"",d.__email||"",d.__company||"",d.__score??"",d.__level||"",...DIMENSIONS.map(dm=>dims[dm.key]??"")]);
+    rows.push([new Date(r.created_at).toLocaleDateString(),d.__name||"",d.__email||"",d.__company||"",d.__score??"",d.__level||"",...DIMENSIONS.map(dm=>dims[dm.key]??"")]);
   });
   const csv=rows.map(r=>r.map(c=>`"${String(c==null?"":c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
@@ -707,7 +743,7 @@ function exportCSV(){
 
 async function loadDashboard(){
   try{
-    const responses=await fetchResponses();
+    const responses=await fetchResponses(ADMIN_PASS);
     renderAdminStats(responses,"dashStats");
     const dimAgg={}; DIMENSIONS.forEach(d=>dimAgg[d.key]=0);
     const lvlCount={"Operación Manual":0,"Cargo en Construcción":0,"Dirección Aumentada":0};
