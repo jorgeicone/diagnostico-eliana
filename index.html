@@ -124,11 +124,15 @@
   .stat-num{font-size:30px;font-weight:800;line-height:1;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .stat-label{font-size:11px;letter-spacing:.16em;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-top:8px}
   .responses-list{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px}
-  .response-row{display:grid;grid-template-columns:1fr 1.6fr 2fr .8fr 1.4fr auto;gap:14px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04);align-items:center;font-size:13px}
+  .resp-grid{display:grid;grid-template-columns:78px minmax(80px,1fr) minmax(130px,1.6fr) 60px 168px auto;column-gap:12px;align-items:center;font-size:13px}
+  .response-row{display:contents}
+  .response-row>*{min-width:0;padding:13px 0;border-top:1px solid rgba(255,255,255,.05)}
+  .response-row.header>*{border-top:none;font-weight:700}
+  .response-row>div:nth-child(2),.response-row>div:nth-child(3){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .response-row:last-child{border-bottom:none}
   .response-row .col-label{font-size:10px;letter-spacing:.16em;color:var(--text-3);text-transform:uppercase;font-weight:700}
   .response-row.header{font-weight:700;color:var(--text-3)}
-  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid var(--border-strong)}
+  .pill{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid var(--border-strong)}
   .view-detail-btn{padding:6px 14px;background:transparent;border:1px solid var(--border-strong);border-radius:99px;color:var(--primary);font-size:12px;cursor:pointer;font-family:inherit}
   .auth-screen{display:none;max-width:420px;margin:80px auto;padding:32px;background:var(--card);border:1px solid var(--border-strong);border-radius:18px;text-align:center}
   .auth-screen.active{display:block}
@@ -569,8 +573,7 @@ async function loadResponses(){
 }
 
 function levelPill(name){
-  const color=name==="Dirección Aumentada"?"#00d4ff":name==="Cargo en Construcción"?"#ff8c00":"rgba(255,255,255,.5)";
-  return `<span class="pill" style="color:${color};border-color:${color}">${name||"—"}</span>`;
+  return `<span class="pill" title="${name||''}" style="color:#00d4ff;border-color:rgba(0,212,255,.5)">${name||"—"}</span>`;
 }
 
 function renderAdminStats(responses,elId){
@@ -593,9 +596,9 @@ function renderResponses(responses){
   let html=`<div class="response-row header"><div class="col-label">Fecha</div><div class="col-label">Nombre</div><div class="col-label">Email</div><div class="col-label">Puntaje</div><div class="col-label">Nivel</div><div></div></div>`;
   responses.forEach((r,idx)=>{
     const d=r.data; const date=new Date(r.created_at).toLocaleDateString();
-    html+=`<div class="response-row"><div>${date}</div><div>${d.__name||"—"}</div><div>${d.__email||"—"}</div><div><b>${d.__score??"—"}</b>/100</div><div>${levelPill(d.__level)}</div><div style="display:flex;gap:6px;justify-content:flex-end"><button class="view-detail-btn" onclick='showDetail(${idx})'>Ver</button><button class="view-detail-btn" style="color:#ff6b6b;border-color:rgba(255,107,107,.5)" onclick='deleteResponse("${r.id}")'>✕</button></div>`;
+    html+=`<div class="response-row"><div>${date}</div><div title="${d.__name||''}">${d.__name||"—"}</div><div title="${d.__email||''}">${d.__email||"—"}</div><div><b>${d.__score??"—"}</b>/100</div><div>${levelPill(d.__level)}</div><div style="display:flex;gap:6px;justify-content:flex-end"><button class="view-detail-btn" onclick='showDetail(${idx})'>Ver</button><button class="view-detail-btn" style="color:#ff6b6b;border-color:rgba(255,107,107,.5)" onclick='deleteResponse("${r.id}")'>✕</button></div>`;
   });
-  list.innerHTML=html;
+  list.innerHTML='<div class="resp-grid">'+html+'</div>';
 }
 
 function showDetail(idx){
